@@ -69,6 +69,10 @@ struct StagedMod {
     mod_name: String,
     selected: bool,
     createtime: Option<i64>,
+    // Optional metadata from db.json
+    filename: Option<String>,
+    fullpath: Option<String>,
+    mod_type: Option<String>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -77,6 +81,9 @@ pub enum SortOption {
     Status,
     Selection,
     Date,
+    Filename,
+    Fullpath,
+    ModType,
 }
 
 struct App {
@@ -89,6 +96,10 @@ struct App {
     current_preset: Option<String>,
     new_preset_name: String,
     mod_search_query: String,
+    // Filters for new db.json fields
+    filename_filter: String,
+    fullpath_filter: String,
+    mod_type_filter: String,
     sort_option: SortOption,
     sort_ascending: bool,
     filter_active_only: bool,
@@ -133,16 +144,37 @@ impl Default for App {
         let staged_mods = staged_mods
             .into_iter()
             .map(|mod_name| {
-                let createtime = db.get("mods")
-                    .and_then(|mods| mods.get(&mod_name.clone()))
+                // Look up the entry under the "mods" object and pull optional fields
+                let entry = db.get("mods").and_then(|mods| mods.get(&mod_name.clone()));
+
+                let createtime = entry
                     .and_then(|m| m.get("stat"))
                     .and_then(|s| s.get("createtime"))
                     .and_then(|t| t.as_i64());
-                
+
+                let filename = entry
+                    .and_then(|m| m.get("filename"))
+                    .and_then(|f| f.as_str())
+                    .map(|s| s.to_owned());
+
+                let fullpath = entry
+                    .and_then(|m| m.get("fullpath"))
+                    .and_then(|f| f.as_str())
+                    .map(|s| s.to_owned());
+
+                // Some db.json use "modType" or "modtype" etc — try a few variants
+                let mod_type = entry
+                    .and_then(|m| m.get("modType").or_else(|| m.get("modtype")).or_else(|| m.get("type")))
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_owned());
+
                 StagedMod {
                     mod_name: mod_name.to_owned(),
                     selected: false,
                     createtime,
+                    filename,
+                    fullpath,
+                    mod_type,
                 }
             })
             .collect();
@@ -166,6 +198,9 @@ impl Default for App {
             current_preset: None,
             new_preset_name: String::new(),
             mod_search_query: String::new(),
+            filename_filter: String::new(),
+            fullpath_filter: String::new(),
+            mod_type_filter: String::new(),
             sort_option: SortOption::Name,
             sort_ascending: true,
             filter_active_only: false,

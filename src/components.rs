@@ -191,6 +191,12 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
     ui.horizontal(|ui| {
         ui.label("Search mods: ");
         ui.text_edit_singleline(&mut app_data.mod_search_query);
+        ui.label("Filename: ");
+        ui.text_edit_singleline(&mut app_data.filename_filter);
+        ui.label("Fullpath: ");
+        ui.text_edit_singleline(&mut app_data.fullpath_filter);
+        ui.label("Type: ");
+        ui.text_edit_singleline(&mut app_data.mod_type_filter);
         
         ui.separator();
         
@@ -233,6 +239,18 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
                 app_data.sort_option = SortOption::Date;
                 app_data.needs_sort = true;
             }
+            if ui.selectable_label(app_data.sort_option == SortOption::Filename, "Filename").clicked() {
+                app_data.sort_option = SortOption::Filename;
+                app_data.needs_sort = true;
+            }
+            if ui.selectable_label(app_data.sort_option == SortOption::Fullpath, "Fullpath").clicked() {
+                app_data.sort_option = SortOption::Fullpath;
+                app_data.needs_sort = true;
+            }
+            if ui.selectable_label(app_data.sort_option == SortOption::ModType, "Mod Type").clicked() {
+                app_data.sort_option = SortOption::ModType;
+                app_data.needs_sort = true;
+            }
         });
           // Apply sorting only when needed
         if app_data.needs_sort {
@@ -251,6 +269,21 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
                         (None, Some(_)) => std::cmp::Ordering::Greater,
                         (None, None) => a.mod_name.cmp(&b.mod_name), // fallback to name sorting
                     },
+                    SortOption::Filename => {
+                        let a_val = a.filename.as_deref().unwrap_or("");
+                        let b_val = b.filename.as_deref().unwrap_or("");
+                        a_val.cmp(b_val)
+                    }
+                    SortOption::Fullpath => {
+                        let a_val = a.fullpath.as_deref().unwrap_or("");
+                        let b_val = b.fullpath.as_deref().unwrap_or("");
+                        a_val.cmp(b_val)
+                    }
+                    SortOption::ModType => {
+                        let a_val = a.mod_type.as_deref().unwrap_or("");
+                        let b_val = b.mod_type.as_deref().unwrap_or("");
+                        a_val.cmp(b_val)
+                    }
                 };
                 
                 if app_data.sort_ascending {
@@ -266,48 +299,61 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
     TableBuilder::new(ui)
         .striped(true)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(Column::auto().resizable(false))
-        .column(Column::exact(75.0).resizable(false))
-        .column(Column::remainder())        .header(20.0, |mut header| {
+    // Make columns resizable so the user can drag to adjust widths
+    .column(Column::auto().resizable(true))
+    .column(Column::exact(75.0).resizable(true))
+    .column(Column::remainder().resizable(true))
+    .column(Column::initial(200.0).resizable(true))
+    .column(Column::initial(250.0).resizable(true))
+    .column(Column::initial(100.0).resizable(true))
+    .header(20.0, |mut header| {
+            // Select column header
             header.col(|ui| {
                 let text = if app_data.sort_option == SortOption::Selection {
-                    if app_data.sort_ascending {
-                        RichText::new("Select ↑")
-                    } else {
-                        RichText::new("Select ↓")
-                    }
-                } else {
-                    RichText::new("Select")
-                };
-                ui.label(text);
+                    if app_data.sort_ascending { RichText::new("Select ↑") } else { RichText::new("Select ↓") }
+                } else { RichText::new("Select") };
+                ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Truncate));
             });
+
+            // Active column header
             header.col(|ui| {
                 let text = if app_data.sort_option == SortOption::Status {
-                    if app_data.sort_ascending {
-                        RichText::new("Active ↑")
-                    } else {
-                        RichText::new("Active ↓")
-                    }
-                } else {
-                    RichText::new("Active")
-                };
-                ui.label(text);
-            });            header.col(|ui| {
+                    if app_data.sort_ascending { RichText::new("Active ↑") } else { RichText::new("Active ↓") }
+                } else { RichText::new("Active") };
+                ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Truncate));
+            });
+
+            // Mod name column header (supports Name or Date sort indicator)
+            header.col(|ui| {
                 let text = if app_data.sort_option == SortOption::Name {
-                    if app_data.sort_ascending {
-                        RichText::new("Mod Name ↑")
-                    } else {
-                        RichText::new("Mod Name ↓")
-                    }
+                    if app_data.sort_ascending { RichText::new("Mod Name ↑") } else { RichText::new("Mod Name ↓") }
                 } else if app_data.sort_option == SortOption::Date {
-                    if app_data.sort_ascending {
-                        RichText::new("Mod Name (Date ↑)")
-                    } else {
-                        RichText::new("Mod Name (Date ↓)")
-                    }
-                } else {
-                    RichText::new("Mod Name")
-                };
+                    if app_data.sort_ascending { RichText::new("Mod Name (Date ↑)") } else { RichText::new("Mod Name (Date ↓)") }
+                } else { RichText::new("Mod Name") };
+                ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Truncate));
+            });
+
+            // Filename header
+            header.col(|ui| {
+                let text = if app_data.sort_option == SortOption::Filename {
+                    if app_data.sort_ascending { RichText::new("Filename ↑") } else { RichText::new("Filename ↓") }
+                } else { RichText::new("Filename") };
+                ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Truncate));
+            });
+
+            // Fullpath header
+            header.col(|ui| {
+                let text = if app_data.sort_option == SortOption::Fullpath {
+                    if app_data.sort_ascending { RichText::new("Fullpath ↑") } else { RichText::new("Fullpath ↓") }
+                } else { RichText::new("Fullpath") };
+                ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Truncate));
+            });
+
+            // Type header
+            header.col(|ui| {
+                let text = if app_data.sort_option == SortOption::ModType {
+                    if app_data.sort_ascending { RichText::new("Type ↑") } else { RichText::new("Type ↓") }
+                } else { RichText::new("Type") };
                 ui.label(text);
             });
         })
@@ -322,6 +368,36 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
                 let text_matches = m.mod_name
                     .to_lowercase()
                     .contains(&app_data.mod_search_query.to_lowercase());
+                // filename/fullpath/type filters
+                let filename_matches = if app_data.filename_filter.is_empty() {
+                    true
+                } else {
+                    m.filename
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&app_data.filename_filter.to_lowercase())
+                };
+
+                let fullpath_matches = if app_data.fullpath_filter.is_empty() {
+                    true
+                } else {
+                    m.fullpath
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&app_data.fullpath_filter.to_lowercase())
+                };
+
+                let modtype_matches = if app_data.mod_type_filter.is_empty() {
+                    true
+                } else {
+                    m.mod_type
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&app_data.mod_type_filter.to_lowercase())
+                };
                 
                 // Active/Inactive filter
                 let active_status = mod_statuses[*i].1;
@@ -340,7 +416,7 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
                     true
                 };
 
-                text_matches && status_matches && selected_matches
+                text_matches && status_matches && selected_matches && filename_matches && fullpath_matches && modtype_matches
             }).map(|(_, m)| m);
 
             for staged_mod in filtered_mods {
@@ -369,7 +445,23 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
                         }
                     });
                     row.col(|ui| {
-                        ui.label(&staged_mod.mod_name);
+                        ui.add(egui::Label::new(&staged_mod.mod_name).wrap_mode(egui::TextWrapMode::Truncate))
+                            .on_hover_text(&staged_mod.mod_name);
+                    });
+                    row.col(|ui| {
+                        let fname = staged_mod.filename.as_deref().unwrap_or("");
+                        ui.add(egui::Label::new(fname).wrap_mode(egui::TextWrapMode::Truncate))
+                            .on_hover_text(fname);
+                    });
+                    row.col(|ui| {
+                        let fpath = staged_mod.fullpath.as_deref().unwrap_or("");
+                        ui.add(egui::Label::new(fpath).wrap_mode(egui::TextWrapMode::Truncate))
+                            .on_hover_text(fpath);
+                    });
+                    row.col(|ui| {
+                        let mtype = staged_mod.mod_type.as_deref().unwrap_or("");
+                        ui.add(egui::Label::new(mtype).wrap_mode(egui::TextWrapMode::Truncate))
+                            .on_hover_text(mtype);
                     });
                 });
             }
