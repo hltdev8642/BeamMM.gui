@@ -1,4 +1,5 @@
 use crate::App;
+use crate::SortOption;
 use beammm::Preset;
 use eframe::egui;
 use egui::RichText;
@@ -6,14 +7,15 @@ use egui_extras::{Column, TableBuilder};
 
 pub fn title_panel(ctx: &egui::Context, app_data: &App) {
     egui::TopBottomPanel::top("title_panel").show(ctx, |ui| {
-        ui.heading("BeamMM.gui");
         ui.horizontal(|ui| {
-            ui.label("Version:");
-            ui.label(&app_data.version);
-        });
-        ui.horizontal(|ui| {
-            ui.label("BeamNG.drive Version:");
-            ui.label(&app_data.beamng_version);
+            ui.heading("BeamMM.gui");
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(&app_data.version);
+                ui.label("Version: ");
+                ui.separator();
+                ui.label(&app_data.beamng_version);
+                ui.label("BeamNG.drive: ");
+            });
         });
     });
 }
@@ -185,25 +187,156 @@ fn presets_table_component(ui: &mut egui::Ui, app_data: &mut App) {
 }
 
 fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
+    // Add search bar    // Search and filter controls
+    ui.horizontal(|ui| {
+        ui.label("Search mods: ");
+        ui.text_edit_singleline(&mut app_data.mod_search_query);
+        
+        ui.separator();
+        
+        // Filter options
+        if ui.selectable_label(app_data.filter_active_only, "Active Only").clicked() {
+            app_data.filter_active_only = !app_data.filter_active_only;
+            app_data.filter_inactive_only = false;
+        }
+        if ui.selectable_label(app_data.filter_inactive_only, "Inactive Only").clicked() {
+            app_data.filter_inactive_only = !app_data.filter_inactive_only;
+            app_data.filter_active_only = false;
+        }
+        if ui.selectable_label(app_data.filter_selected_only, "Selected Only").clicked() {
+            app_data.filter_selected_only = !app_data.filter_selected_only;
+        }
+    });
+      // Sort controls
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Sort by:").strong());
+        
+        // Direction toggle
+        if ui.button(if app_data.sort_ascending { "↑" } else { "↓" }).clicked() {
+            app_data.sort_ascending = !app_data.sort_ascending;
+        }        // Sort options
+        ui.horizontal(|ui| {
+            if ui.selectable_label(app_data.sort_option == SortOption::Name, "Name").clicked() {
+                app_data.sort_option = SortOption::Name;
+            }
+            if ui.selectable_label(app_data.sort_option == SortOption::Status, "Status").clicked() {
+                app_data.sort_option = SortOption::Status;
+            }
+            if ui.selectable_label(app_data.sort_option == SortOption::Selection, "Selection").clicked() {
+                app_data.sort_option = SortOption::Selection;
+            }
+            if ui.selectable_label(app_data.sort_option == SortOption::Date, "Date Added").clicked() {
+                app_data.sort_option = SortOption::Date;
+            }
+        });
+          // Apply sorting
+        app_data.staged_mods.sort_by(|a, b| {
+            let cmp = match app_data.sort_option {
+                SortOption::Name => a.mod_name.cmp(&b.mod_name),
+                SortOption::Status => {
+                    let a_active = app_data.beam_mod_config.is_mod_active(&a.mod_name).unwrap();
+                    let b_active = app_data.beam_mod_config.is_mod_active(&b.mod_name).unwrap();
+                    a_active.cmp(&b_active)
+                },
+                SortOption::Selection => a.selected.cmp(&b.selected),
+                SortOption::Date => match (a.createtime, b.createtime) {
+                    (Some(a_time), Some(b_time)) => a_time.cmp(&b_time),
+                    (Some(_), None) => std::cmp::Ordering::Less,
+                    (None, Some(_)) => std::cmp::Ordering::Greater,
+                    (None, None) => a.mod_name.cmp(&b.mod_name), // fallback to name sorting
+                },
+            };
+            
+            if app_data.sort_ascending {
+                cmp
+            } else {
+                cmp.reverse()
+            }
+        });
+    });
+
     TableBuilder::new(ui)
+        .striped(true)
+        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(Column::auto().resizable(false))
         .column(Column::exact(75.0).resizable(false))
-        .column(Column::remainder())
-        .header(15.0, |mut header| {
+        .column(Column::remainder())        .header(20.0, |mut header| {
             header.col(|ui| {
-                ui.label("Select");
+                let text = if app_data.sort_option == SortOption::Selection {
+                    if app_data.sort_ascending {
+                        RichText::new("Select ↑").strong()
+                    } else {
+                        RichText::new("Select ↓").strong()
+                    }
+                } else {
+                    RichText::new("Select").strong()
+                };
+                ui.label(text);
             });
             header.col(|ui| {
-                ui.label("Active");
-            });
-            header.col(|ui| {
-                ui.label("Mod Name");
+                let text = if app_data.sort_option == SortOption::Status {
+                    if app_data.sort_ascending {
+                        RichText::new("Active ↑").strong()
+                    } else {
+                        RichText::new("Active ↓").strong()
+                    }
+                } else {
+                    RichText::new("Active").strong()
+                };
+                ui.label(text);
+            });            header.col(|ui| {
+                let text = if app_data.sort_option == SortOption::Name {
+                    if app_data.sort_ascending {
+                        RichText::new("Mod Name ↑").strong()
+                    } else {
+                        RichText::new("Mod Name ↓").strong()
+                    }
+                } else if app_data.sort_option == SortOption::Date {
+                    if app_data.sort_ascending {
+                        RichText::new("Mod Name (Date ↑)").strong()
+                    } else {
+                        RichText::new("Mod Name (Date ↓)").strong()
+                    }
+                } else {
+                    RichText::new("Mod Name").strong()
+                };
+                ui.label(text);
             });
         })
-        .body(|mut body| {
-            for staged_mod in &mut app_data.staged_mods {
-                body.row(20.0, |mut row| {
-                    row.col(|ui| {
+        .body(|mut body| {            // First collect mod statuses
+            let mod_statuses: Vec<_> = app_data.staged_mods.iter().map(|m| (
+                m.mod_name.clone(),
+                app_data.beam_mod_config.is_mod_active(&m.mod_name).unwrap()
+            )).collect();
+
+            let filtered_mods = app_data.staged_mods.iter_mut().enumerate().filter(|(i, m)| {
+                // Text search filter
+                let text_matches = m.mod_name
+                    .to_lowercase()
+                    .contains(&app_data.mod_search_query.to_lowercase());
+                
+                // Active/Inactive filter
+                let active_status = mod_statuses[*i].1;
+                let status_matches = if app_data.filter_active_only {
+                    active_status
+                } else if app_data.filter_inactive_only {
+                    !active_status
+                } else {
+                    true
+                };
+                
+                // Selected filter
+                let selected_matches = if app_data.filter_selected_only {
+                    m.selected
+                } else {
+                    true
+                };
+
+                text_matches && status_matches && selected_matches
+            }).map(|(_, m)| m);
+
+            for staged_mod in filtered_mods {
+                body.row(20.0, |mut row| {                    row.col(|ui| {
                         ui.checkbox(&mut staged_mod.selected, "");
                     });
                     row.col(|ui| {
@@ -212,9 +345,9 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
                             .is_mod_active(&staged_mod.mod_name)
                             .unwrap();
                         let text = if active {
-                            RichText::new("Active").color(egui::Color32::GREEN)
+                            RichText::new("Active").color(egui::Color32::from_rgb(50, 200, 50))
                         } else {
-                            RichText::new("Inactive").color(egui::Color32::RED)
+                            RichText::new("Inactive").color(egui::Color32::from_rgb(200, 50, 50))
                         };
                         if ui.button(text).clicked() {
                             app_data
@@ -237,21 +370,29 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
 
 /// Buttons to select/deselect/enabled/disable mods etc.
 /// Displayed right above the mods table.
-fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {
-    ui.horizontal(|ui| {
-        if ui.button("Select All").clicked() {
+fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {    ui.horizontal(|ui| {
+        if ui.button(RichText::new("Select All").size(14.0)).clicked() {
             for staged_mod in &mut app_data.staged_mods {
-                staged_mod.selected = true;
+                if staged_mod.mod_name
+                    .to_lowercase()
+                    .contains(&app_data.mod_search_query.to_lowercase())
+                {
+                    staged_mod.selected = true;
+                }
             }
         }
-        if ui.button("Deselect All").clicked() {
+
+        if ui.button(RichText::new("Deselect All").size(14.0)).clicked() {
             for staged_mod in &mut app_data.staged_mods {
                 staged_mod.selected = false;
             }
         }
-    });
-    ui.horizontal(|ui| {
-        if ui.button("Enable Selected").clicked() {
+    });    ui.horizontal(|ui| {
+        if ui.button(
+            RichText::new("Enable Selected")
+                .size(14.0)
+                .color(egui::Color32::from_rgb(50, 200, 50)),
+        ).clicked() {
             for staged_mod in &app_data.staged_mods {
                 if staged_mod.selected {
                     app_data
@@ -265,7 +406,12 @@ fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {
                 .save_to_path(&app_data.beam_paths.mods_dir)
                 .unwrap();
         }
-        if ui.button("Disable Selected").clicked() {
+
+        if ui.button(
+            RichText::new("Disable Selected")
+                .size(14.0)
+                .color(egui::Color32::from_rgb(200, 50, 50)),
+        ).clicked() {
             for staged_mod in &app_data.staged_mods {
                 if staged_mod.selected {
                     app_data
@@ -283,10 +429,13 @@ fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {
                 .save_to_path(&app_data.beam_paths.mods_dir)
                 .unwrap();
         }
-    });
-    ui.horizontal(|ui| {
-        if ui.button("Add to Selected Preset").clicked() {
-            if let Some(preset_name) = &app_data.current_preset {
+    });    if let Some(preset_name) = &app_data.current_preset {
+        ui.horizontal(|ui| {
+            if ui.button(
+                RichText::new(format!("Add to Preset '{}'", preset_name))
+                    .size(14.0)
+                    .color(egui::Color32::from_rgb(50, 150, 200)),
+            ).clicked() {
                 let preset = &mut app_data
                     .presets
                     .iter_mut()
@@ -306,6 +455,6 @@ fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {
                     .apply_presets(&app_data.beam_paths.presets_dir)
                     .unwrap();
             }
-        }
-    });
+        });
+    }
 }

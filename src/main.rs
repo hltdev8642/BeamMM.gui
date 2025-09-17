@@ -30,6 +30,15 @@ struct BeamPaths {
 struct StagedMod {
     mod_name: String,
     selected: bool,
+    createtime: Option<i64>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum SortOption {
+    Name,
+    Status,
+    Selection,
+    Date,
 }
 
 struct App {
@@ -41,6 +50,13 @@ struct App {
     presets: Vec<(String, Preset)>,
     current_preset: Option<String>,
     new_preset_name: String,
+    mod_search_query: String,
+    sort_option: SortOption,
+    sort_ascending: bool,
+    filter_active_only: bool,
+    filter_inactive_only: bool,
+    filter_selected_only: bool,
+    sort_by_date: bool,
 }
 
 impl Default for App {
@@ -52,22 +68,33 @@ impl Default for App {
         let beammm_dir = beammm::path::beammm_dir().unwrap();
         let presets_dir = beammm::path::presets_dir(&beammm_dir).unwrap();
         let beam_paths = BeamPaths {
-            beamng_dir,
-            mods_dir,
+            beamng_dir: beamng_dir.clone(),
+            mods_dir: mods_dir.clone(),
             beammm_dir,
             presets_dir,
         };
+        
         let mod_cfg = beammm::game::ModCfg::load_from_path(&beam_paths.mods_dir).unwrap();
         let mut staged_mods = mod_cfg.get_mods().collect::<Vec<&String>>();
-
         staged_mods.sort();
+
+        // Load db.json to get creation times
+        let db_path = beamng_dir.join("mods").join("db.json");
+        let db_content = std::fs::read_to_string(db_path).unwrap_or_default();
+        let db: serde_json::Value = serde_json::from_str(&db_content).unwrap_or_default();
 
         let staged_mods = staged_mods
             .into_iter()
-            .map(|mod_name| StagedMod {
-                mod_name: mod_name.to_owned(),
-                // active: mod_cfg.is_mod_active(&mod_name).unwrap(),
-                selected: false,
+            .map(|mod_name| {
+                let createtime = db.get(mod_name)
+                    .and_then(|m| m.get("createtime"))
+                    .and_then(|t| t.as_i64());
+                
+                StagedMod {
+                    mod_name: mod_name.to_owned(),
+                    selected: false,
+                    createtime,
+                }
             })
             .collect();
 
@@ -89,6 +116,13 @@ impl Default for App {
             presets,
             current_preset: None,
             new_preset_name: String::new(),
+            mod_search_query: String::new(),
+            sort_option: SortOption::Name,
+            sort_ascending: true,
+            filter_active_only: false,
+            filter_inactive_only: false,
+            filter_selected_only: false,
+            sort_by_date: false,
         }
     }
 }
