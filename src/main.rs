@@ -21,16 +21,22 @@ fn main() -> eframe::Result {
 
             // Try runtime loading (smaller binary) from `assets/YourFont-Regular.ttf`
             // Create an `assets` folder next to the executable and drop a TTF there to override.
-            if let Ok(bytes) = std::fs::read("assets/YourFont-Regular.ttf") {
-                fonts.font_data.insert(
-                    "runtime_font".to_owned(),
-                    egui::FontData::from_owned(bytes),
-                );
-                fonts
-                    .families
-                    .entry(egui::FontFamily::Proportional)
-                    .or_default()
-                    .insert(0, "runtime_font".to_owned());
+            match std::fs::read("assets/YourFont-Regular.ttf") {
+                Ok(bytes) => {
+                    fonts.font_data.insert(
+                        "runtime_font".to_owned(),
+                        egui::FontData::from_owned(bytes),
+                    );
+                    fonts
+                        .families
+                        .entry(egui::FontFamily::Proportional)
+                        .or_default()
+                        .insert(0, "runtime_font".to_owned());
+                    eprintln!("Loaded runtime font from assets/YourFont-Regular.ttf");
+                }
+                Err(_) => {
+                    eprintln!("Runtime font not found at assets/YourFont-Regular.ttf; using default fonts");
+                }
             }
 
             // Apply fonts to the context
@@ -50,7 +56,20 @@ fn main() -> eframe::Result {
 
             // Reduce vertical spacing slightly to make UI feel less tall
             style.spacing.item_spacing = egui::vec2(8.0, 4.0);
-            cc.egui_ctx.set_style(style);
+            cc.egui_ctx.set_style(style.clone());
+
+            // Log applied text style sizes to help debug font/style issues
+            let heading_size = style
+                .text_styles
+                .get(&egui::TextStyle::Heading)
+                .map(|f| f.size)
+                .unwrap_or(0.0);
+            let body_size = style
+                .text_styles
+                .get(&egui::TextStyle::Body)
+                .map(|f| f.size)
+                .unwrap_or(0.0);
+            eprintln!("Applied style text sizes: heading={} body={}", heading_size, body_size);
 
             Ok(Box::<App>::default())
         }),
@@ -100,12 +119,14 @@ struct App {
     filename_filter: String,
     fullpath_filter: String,
     mod_type_filter: String,
+    available_mod_types: Vec<String>,
     sort_option: SortOption,
     sort_ascending: bool,
     filter_active_only: bool,
     filter_inactive_only: bool,
     filter_selected_only: bool,
     needs_sort: bool, // Track if sorting is needed
+    advanced_filters_open: bool,
 }
 
 impl Default for App {
@@ -141,7 +162,7 @@ impl Default for App {
             serde_json::from_str(&db_content).unwrap_or(serde_json::Value::Null)
         };
 
-        let staged_mods = staged_mods
+        let staged_mods: Vec<StagedMod> = staged_mods
             .into_iter()
             .map(|mod_name| {
                 // Look up the entry under the "mods" object and pull optional fields
@@ -178,6 +199,14 @@ impl Default for App {
                 }
             })
             .collect();
+        // Compute available mod types before we move staged_mods into the App struct
+        let mut available_mod_types: Vec<String> = staged_mods
+            .iter()
+            .filter_map(|m| m.mod_type.clone())
+            .filter(|s| !s.is_empty())
+            .collect();
+        available_mod_types.sort();
+        available_mod_types.dedup();
 
         let presets = Preset::list(&beam_paths.presets_dir)
             .unwrap()
@@ -188,6 +217,7 @@ impl Default for App {
                 )
             })
             .collect();
+        let advanced_filters_open = false; // Default value for advanced_filters_open
         Self {
             beam_mod_config: mod_cfg,
             beam_paths,
@@ -201,12 +231,27 @@ impl Default for App {
             filename_filter: String::new(),
             fullpath_filter: String::new(),
             mod_type_filter: String::new(),
+            // Use precomputed available_mod_types
+            available_mod_types,
             sort_option: SortOption::Name,
             sort_ascending: true,
             filter_active_only: false,
             filter_inactive_only: false,
             filter_selected_only: false,
             needs_sort: true,
+            advanced_filters_open,
+        }
+    }
+}
+
+impl App {
+    fn save_gui_config(&self) {
+        let gui_config_path = self.beam_paths.beammm_dir.join("gui_config.json");
+        let cfg = serde_json::json!({
+            "advanced_filters_open": self.advanced_filters_open,
+        });
+        if let Err(e) = std::fs::write(&gui_config_path, serde_json::to_string_pretty(&cfg).unwrap()) {
+            eprintln!("Failed to write gui config {}: {}", gui_config_path.display(), e);
         }
     }
 }

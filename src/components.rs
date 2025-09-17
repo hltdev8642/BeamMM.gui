@@ -187,32 +187,56 @@ fn presets_table_component(ui: &mut egui::Ui, app_data: &mut App) {
 }
 
 fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
-    // Add search bar    // Search and filter controls
+    // Search bar (kept visible) and a collapsible Advanced Filters section
     ui.horizontal(|ui| {
         ui.label("Search mods: ");
         ui.text_edit_singleline(&mut app_data.mod_search_query);
-        ui.label("Filename: ");
-        ui.text_edit_singleline(&mut app_data.filename_filter);
-        ui.label("Fullpath: ");
-        ui.text_edit_singleline(&mut app_data.fullpath_filter);
-        ui.label("Type: ");
-        ui.text_edit_singleline(&mut app_data.mod_type_filter);
-        
-        ui.separator();
-        
-        // Filter options
-        if ui.selectable_label(app_data.filter_active_only, "Active Only").clicked() {
-            app_data.filter_active_only = !app_data.filter_active_only;
-            app_data.filter_inactive_only = false;
-        }
-        if ui.selectable_label(app_data.filter_inactive_only, "Inactive Only").clicked() {
-            app_data.filter_inactive_only = !app_data.filter_inactive_only;
-            app_data.filter_active_only = false;
-        }
-        if ui.selectable_label(app_data.filter_selected_only, "Selected Only").clicked() {
-            app_data.filter_selected_only = !app_data.filter_selected_only;
-        }
     });
+
+    // Collapsible advanced filters; remember and persist open/closed state
+    let collapsing_resp = egui::CollapsingHeader::new("Advanced Filters")
+        .id_source("advanced_filters")
+        .default_open(app_data.advanced_filters_open)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Fullpath: ");
+                ui.text_edit_singleline(&mut app_data.fullpath_filter);
+            });
+
+            ui.horizontal(|ui| {
+                ui.label("Type: ");
+                egui::ComboBox::from_id_source("mod_type_combo")
+                    .selected_text(if app_data.mod_type_filter.is_empty() { "All" } else { &app_data.mod_type_filter })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut app_data.mod_type_filter, String::new(), "All");
+                        for t in &app_data.available_mod_types {
+                            ui.selectable_value(&mut app_data.mod_type_filter, t.clone(), t);
+                        }
+                    });
+
+                ui.separator();
+
+                // Filter options
+                if ui.selectable_label(app_data.filter_active_only, "Active Only").clicked() {
+                    app_data.filter_active_only = !app_data.filter_active_only;
+                    app_data.filter_inactive_only = false;
+                }
+                if ui.selectable_label(app_data.filter_inactive_only, "Inactive Only").clicked() {
+                    app_data.filter_inactive_only = !app_data.filter_inactive_only;
+                    app_data.filter_active_only = false;
+                }
+                if ui.selectable_label(app_data.filter_selected_only, "Selected Only").clicked() {
+                    app_data.filter_selected_only = !app_data.filter_selected_only;
+                }
+            });
+        });
+
+    // Persist open/closed state if changed
+    let is_open = collapsing_resp.openness > 0.5;
+    if is_open != app_data.advanced_filters_open {
+        app_data.advanced_filters_open = is_open;
+        app_data.save_gui_config();
+    }
       // Sort controls
     ui.horizontal(|ui| {
         ui.label(RichText::new("Sort by:"));
@@ -300,12 +324,12 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
         .striped(true)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
     // Make columns resizable so the user can drag to adjust widths
-    .column(Column::auto().resizable(true))
-    .column(Column::exact(75.0).resizable(true))
+    // Limit the number of resizable columns to reduce layout recalculation and dragging lag
+    .column(Column::auto().resizable(false))
+    .column(Column::exact(75.0).resizable(false))
     .column(Column::remainder().resizable(true))
-    .column(Column::initial(200.0).resizable(true))
     .column(Column::initial(250.0).resizable(true))
-    .column(Column::initial(100.0).resizable(true))
+    .column(Column::initial(100.0).resizable(false))
     .header(20.0, |mut header| {
             // Select column header
             header.col(|ui| {
@@ -333,13 +357,6 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
                 ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Truncate));
             });
 
-            // Filename header
-            header.col(|ui| {
-                let text = if app_data.sort_option == SortOption::Filename {
-                    if app_data.sort_ascending { RichText::new("Filename ↑") } else { RichText::new("Filename ↓") }
-                } else { RichText::new("Filename") };
-                ui.add(egui::Label::new(text).wrap_mode(egui::TextWrapMode::Truncate));
-            });
 
             // Fullpath header
             header.col(|ui| {
@@ -392,11 +409,7 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
                 let modtype_matches = if app_data.mod_type_filter.is_empty() {
                     true
                 } else {
-                    m.mod_type
-                        .as_deref()
-                        .unwrap_or("")
-                        .to_lowercase()
-                        .contains(&app_data.mod_type_filter.to_lowercase())
+                    m.mod_type.as_deref().unwrap_or("") == app_data.mod_type_filter
                 };
                 
                 // Active/Inactive filter
@@ -449,11 +462,6 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
                             .on_hover_text(&staged_mod.mod_name);
                     });
                     row.col(|ui| {
-                        let fname = staged_mod.filename.as_deref().unwrap_or("");
-                        ui.add(egui::Label::new(fname).wrap_mode(egui::TextWrapMode::Truncate))
-                            .on_hover_text(fname);
-                    });
-                    row.col(|ui| {
                         let fpath = staged_mod.fullpath.as_deref().unwrap_or("");
                         ui.add(egui::Label::new(fpath).wrap_mode(egui::TextWrapMode::Truncate))
                             .on_hover_text(fpath);
@@ -472,11 +480,42 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
 /// Displayed right above the mods table.
 fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {    ui.horizontal(|ui| {
     if ui.button(RichText::new("Select All").size(12.0)).clicked() {
+            // Select only the mods that are currently visible given the active filters
+            // Build the same predicate used in the table body
+            let query = app_data.mod_search_query.to_lowercase();
             for staged_mod in &mut app_data.staged_mods {
-                if staged_mod.mod_name
-                    .to_lowercase()
-                    .contains(&app_data.mod_search_query.to_lowercase())
-                {
+                let text_matches = staged_mod.mod_name.to_lowercase().contains(&query);
+
+                let fullpath_matches = if app_data.fullpath_filter.is_empty() {
+                    true
+                } else {
+                    staged_mod
+                        .fullpath
+                        .as_deref()
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&app_data.fullpath_filter.to_lowercase())
+                };
+
+                let modtype_matches = if app_data.mod_type_filter.is_empty() {
+                    true
+                } else {
+                    staged_mod.mod_type.as_deref().unwrap_or("") == app_data.mod_type_filter
+                };
+
+                // Active/Inactive filter
+                let active_status = app_data.beam_mod_config.is_mod_active(&staged_mod.mod_name).unwrap();
+                let status_matches = if app_data.filter_active_only {
+                    active_status
+                } else if app_data.filter_inactive_only {
+                    !active_status
+                } else {
+                    true
+                };
+
+                // Selected filter doesn't apply to visibility when selecting all
+
+                if text_matches && fullpath_matches && modtype_matches && status_matches {
                     staged_mod.selected = true;
                 }
             }
