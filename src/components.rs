@@ -209,50 +209,58 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
     });
       // Sort controls
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Sort by:").strong());
+        ui.label(RichText::new("Sort by:"));
         
         // Direction toggle
         if ui.button(if app_data.sort_ascending { "↑" } else { "↓" }).clicked() {
             app_data.sort_ascending = !app_data.sort_ascending;
+            app_data.needs_sort = true;
         }        // Sort options
         ui.horizontal(|ui| {
             if ui.selectable_label(app_data.sort_option == SortOption::Name, "Name").clicked() {
                 app_data.sort_option = SortOption::Name;
+                app_data.needs_sort = true;
             }
             if ui.selectable_label(app_data.sort_option == SortOption::Status, "Status").clicked() {
                 app_data.sort_option = SortOption::Status;
+                app_data.needs_sort = true;
             }
             if ui.selectable_label(app_data.sort_option == SortOption::Selection, "Selection").clicked() {
                 app_data.sort_option = SortOption::Selection;
+                app_data.needs_sort = true;
             }
             if ui.selectable_label(app_data.sort_option == SortOption::Date, "Date Added").clicked() {
                 app_data.sort_option = SortOption::Date;
+                app_data.needs_sort = true;
             }
         });
-          // Apply sorting
-        app_data.staged_mods.sort_by(|a, b| {
-            let cmp = match app_data.sort_option {
-                SortOption::Name => a.mod_name.cmp(&b.mod_name),
-                SortOption::Status => {
-                    let a_active = app_data.beam_mod_config.is_mod_active(&a.mod_name).unwrap();
-                    let b_active = app_data.beam_mod_config.is_mod_active(&b.mod_name).unwrap();
-                    a_active.cmp(&b_active)
-                },
-                SortOption::Selection => a.selected.cmp(&b.selected),
-                SortOption::Date => match (a.createtime, b.createtime) {
-                    (Some(a_time), Some(b_time)) => a_time.cmp(&b_time),
-                    (Some(_), None) => std::cmp::Ordering::Less,
-                    (None, Some(_)) => std::cmp::Ordering::Greater,
-                    (None, None) => a.mod_name.cmp(&b.mod_name), // fallback to name sorting
-                },
-            };
-            
-            if app_data.sort_ascending {
-                cmp
-            } else {
-                cmp.reverse()
-            }
-        });
+          // Apply sorting only when needed
+        if app_data.needs_sort {
+            app_data.staged_mods.sort_by(|a, b| {
+                let cmp = match app_data.sort_option {
+                    SortOption::Name => a.mod_name.cmp(&b.mod_name),
+                    SortOption::Status => {
+                        let a_active = app_data.beam_mod_config.is_mod_active(&a.mod_name).unwrap();
+                        let b_active = app_data.beam_mod_config.is_mod_active(&b.mod_name).unwrap();
+                        a_active.cmp(&b_active)
+                    },
+                    SortOption::Selection => a.selected.cmp(&b.selected),
+                    SortOption::Date => match (a.createtime, b.createtime) {
+                        (Some(a_time), Some(b_time)) => a_time.cmp(&b_time),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => a.mod_name.cmp(&b.mod_name), // fallback to name sorting
+                    },
+                };
+                
+                if app_data.sort_ascending {
+                    cmp
+                } else {
+                    cmp.reverse()
+                }
+            });
+            app_data.needs_sort = false;
+        }
     });
 
     TableBuilder::new(ui)
@@ -264,41 +272,41 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
             header.col(|ui| {
                 let text = if app_data.sort_option == SortOption::Selection {
                     if app_data.sort_ascending {
-                        RichText::new("Select ↑").strong()
+                        RichText::new("Select ↑")
                     } else {
-                        RichText::new("Select ↓").strong()
+                        RichText::new("Select ↓")
                     }
                 } else {
-                    RichText::new("Select").strong()
+                    RichText::new("Select")
                 };
                 ui.label(text);
             });
             header.col(|ui| {
                 let text = if app_data.sort_option == SortOption::Status {
                     if app_data.sort_ascending {
-                        RichText::new("Active ↑").strong()
+                        RichText::new("Active ↑")
                     } else {
-                        RichText::new("Active ↓").strong()
+                        RichText::new("Active ↓")
                     }
                 } else {
-                    RichText::new("Active").strong()
+                    RichText::new("Active")
                 };
                 ui.label(text);
             });            header.col(|ui| {
                 let text = if app_data.sort_option == SortOption::Name {
                     if app_data.sort_ascending {
-                        RichText::new("Mod Name ↑").strong()
+                        RichText::new("Mod Name ↑")
                     } else {
-                        RichText::new("Mod Name ↓").strong()
+                        RichText::new("Mod Name ↓")
                     }
                 } else if app_data.sort_option == SortOption::Date {
                     if app_data.sort_ascending {
-                        RichText::new("Mod Name (Date ↑)").strong()
+                        RichText::new("Mod Name (Date ↑)")
                     } else {
-                        RichText::new("Mod Name (Date ↓)").strong()
+                        RichText::new("Mod Name (Date ↓)")
                     }
                 } else {
-                    RichText::new("Mod Name").strong()
+                    RichText::new("Mod Name")
                 };
                 ui.label(text);
             });
@@ -371,7 +379,7 @@ fn mods_table_component(ui: &mut egui::Ui, app_data: &mut App) {
 /// Buttons to select/deselect/enabled/disable mods etc.
 /// Displayed right above the mods table.
 fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {    ui.horizontal(|ui| {
-        if ui.button(RichText::new("Select All").size(14.0)).clicked() {
+    if ui.button(RichText::new("Select All").size(12.0)).clicked() {
             for staged_mod in &mut app_data.staged_mods {
                 if staged_mod.mod_name
                     .to_lowercase()
@@ -382,15 +390,15 @@ fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {    ui.horizont
             }
         }
 
-        if ui.button(RichText::new("Deselect All").size(14.0)).clicked() {
+    if ui.button(RichText::new("Deselect All").size(12.0)).clicked() {
             for staged_mod in &mut app_data.staged_mods {
                 staged_mod.selected = false;
             }
         }
     });    ui.horizontal(|ui| {
-        if ui.button(
+            if ui.button(
             RichText::new("Enable Selected")
-                .size(14.0)
+                .size(12.0)
                 .color(egui::Color32::from_rgb(50, 200, 50)),
         ).clicked() {
             for staged_mod in &app_data.staged_mods {
@@ -409,7 +417,7 @@ fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {    ui.horizont
 
         if ui.button(
             RichText::new("Disable Selected")
-                .size(14.0)
+                .size(12.0)
                 .color(egui::Color32::from_rgb(200, 50, 50)),
         ).clicked() {
             for staged_mod in &app_data.staged_mods {
@@ -433,7 +441,7 @@ fn mod_actions_component(ui: &mut egui::Ui, app_data: &mut App) {    ui.horizont
         ui.horizontal(|ui| {
             if ui.button(
                 RichText::new(format!("Add to Preset '{}'", preset_name))
-                    .size(14.0)
+                    .size(12.0)
                     .color(egui::Color32::from_rgb(50, 150, 200)),
             ).clicked() {
                 let preset = &mut app_data

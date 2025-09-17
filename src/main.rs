@@ -15,7 +15,45 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "BeamMM.gui",
         options,
-        Box::new(|_cc| Ok(Box::<App>::default())),
+        Box::new(|cc| {
+            // --- Font setup: try runtime load from `assets/` then fall back to defaults ---
+            let mut fonts = egui::FontDefinitions::default();
+
+            // Try runtime loading (smaller binary) from `assets/YourFont-Regular.ttf`
+            // Create an `assets` folder next to the executable and drop a TTF there to override.
+            if let Ok(bytes) = std::fs::read("assets/YourFont-Regular.ttf") {
+                fonts.font_data.insert(
+                    "runtime_font".to_owned(),
+                    egui::FontData::from_owned(bytes),
+                );
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Proportional)
+                    .or_default()
+                    .insert(0, "runtime_font".to_owned());
+            }
+
+            // Apply fonts to the context
+            cc.egui_ctx.set_fonts(fonts);
+
+            // Tweak the style: set text style sizes
+            let mut style = (*cc.egui_ctx.style()).clone();
+            // Slightly smaller, less tall text styles
+            style.text_styles = [
+                (egui::TextStyle::Heading, egui::FontId::new(22.0, egui::FontFamily::Proportional)),
+                (egui::TextStyle::Body, egui::FontId::new(14.0, egui::FontFamily::Proportional)),
+                (egui::TextStyle::Monospace, egui::FontId::new(11.0, egui::FontFamily::Monospace)),
+                (egui::TextStyle::Button, egui::FontId::new(12.0, egui::FontFamily::Proportional)),
+                (egui::TextStyle::Small, egui::FontId::new(10.0, egui::FontFamily::Proportional)),
+            ]
+            .into();
+
+            // Reduce vertical spacing slightly to make UI feel less tall
+            style.spacing.item_spacing = egui::vec2(8.0, 4.0);
+            cc.egui_ctx.set_style(style);
+
+            Ok(Box::<App>::default())
+        }),
     )
 }
 
@@ -56,7 +94,7 @@ struct App {
     filter_active_only: bool,
     filter_inactive_only: bool,
     filter_selected_only: bool,
-    sort_by_date: bool,
+    needs_sort: bool, // Track if sorting is needed
 }
 
 impl Default for App {
@@ -79,15 +117,26 @@ impl Default for App {
         staged_mods.sort();
 
         // Load db.json to get creation times
-        let db_path = beamng_dir.join("mods").join("db.json");
-        let db_content = std::fs::read_to_string(db_path).unwrap_or_default();
-        let db: serde_json::Value = serde_json::from_str(&db_content).unwrap_or_default();
+        let db_path = beam_paths.mods_dir.join("db.json");
+        
+        let db_content = match std::fs::read_to_string(&db_path) {
+            Ok(content) => content,
+            Err(_) => String::new()
+        };
+        
+        let db: serde_json::Value = if db_content.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::from_str(&db_content).unwrap_or(serde_json::Value::Null)
+        };
 
         let staged_mods = staged_mods
             .into_iter()
             .map(|mod_name| {
-                let createtime = db.get(mod_name)
-                    .and_then(|m| m.get("createtime"))
+                let createtime = db.get("mods")
+                    .and_then(|mods| mods.get(&mod_name.clone()))
+                    .and_then(|m| m.get("stat"))
+                    .and_then(|s| s.get("createtime"))
                     .and_then(|t| t.as_i64());
                 
                 StagedMod {
@@ -122,7 +171,7 @@ impl Default for App {
             filter_active_only: false,
             filter_inactive_only: false,
             filter_selected_only: false,
-            sort_by_date: false,
+            needs_sort: true,
         }
     }
 }
